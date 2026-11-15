@@ -6,17 +6,62 @@
 <title>XEVIOUS 3D - Area 1 (ROM配置)</title>
 <style>
   html,body{margin:0;height:100%;background:#05070c;overflow:hidden;
-    font-family:"Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",sans-serif;}
-  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
-  canvas{image-rendering:pixelated;image-rendering:crisp-edges;
-    box-shadow:0 0 40px rgba(60,120,255,.25);border-radius:6px;background:#000;max-width:100%;max-height:100%;}
-  #help{position:fixed;left:0;right:0;bottom:6px;text-align:center;color:#7f8fa8;font-size:12px;
-    letter-spacing:.06em;pointer-events:none;user-select:none;}
+    font-family:"Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",sans-serif;
+    -webkit-user-select:none;user-select:none;overscroll-behavior:none;
+    -webkit-tap-highlight-color:transparent;}
+  #stage{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:8px;padding:8px;box-sizing:border-box;}
+  #play{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;
+    justify-content:center;}
+  canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;
+    box-shadow:0 0 40px rgba(60,120,255,.25);border-radius:6px;background:#000;
+    max-width:100%;touch-action:none;}
+  #help{color:#7f8fa8;font-size:12px;letter-spacing:.06em;text-align:center;
+    pointer-events:none;flex:0 0 auto;line-height:1.5;}
+  /* ---- on-screen controls: always *below* the play area, never on top ---- */
+  #pad{display:none;flex:0 0 auto;width:100%;max-width:640px;
+    justify-content:space-between;align-items:flex-end;gap:12px;}
+  #pad.show{display:flex;}
+  #pad button{font:inherit;color:#cfe0ff;background:#18202e;border:1px solid #33445e;
+    border-radius:10px;padding:0;touch-action:none;-webkit-user-select:none;user-select:none;
+    display:flex;align-items:center;justify-content:center;font-weight:700;}
+  #pad button:active,#pad button.on{background:#2b4a72;border-color:#7fb4ff;color:#fff;}
+  .dpad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(2,54px);gap:6px;}
+  .dpad .up{grid-column:2;grid-row:1;font-size:20px;}
+  .dpad .left{grid-column:1;grid-row:2;font-size:20px;}
+  .dpad .down{grid-column:2;grid-row:2;font-size:20px;}
+  .dpad .right{grid-column:3;grid-row:2;font-size:20px;}
+  .acts{display:grid;grid-template-columns:repeat(2,minmax(92px,1fr));gap:6px;}
+  .acts .big{height:58px;font-size:12px;line-height:1.15;text-align:center;flex-direction:column;}
+  .acts .big small{display:block;font-size:10px;font-weight:400;opacity:.7;}
+  .acts .small{height:38px;font-size:12px;color:#9fb2ca;}
+  @media (pointer:coarse), (max-width:820px){
+    #pad{display:flex;}
+    #pad.show{display:flex;}
+    #play{align-items:flex-end;}      /* keep the picture next to the thumbs */
+    #help{display:none;}
+  }
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="c" width="640" height="480"></canvas></div>
-<div id="help">← → ↑ ↓ / WASD 移動　　SPACE ザッパー（対空）　　Z ブラスター（対地）　　C 視点　　P 一時停止</div>
+<div id="stage">
+  <div id="play"><canvas id="c" width="640" height="480"></canvas></div>
+  <div id="pad">
+    <div class="dpad">
+      <button class="up"    data-k="up"    aria-label="前進">▲</button>
+      <button class="left"  data-k="left"  aria-label="左">◀</button>
+      <button class="down"  data-k="down"  aria-label="後退">▼</button>
+      <button class="right" data-k="right" aria-label="右">▶</button>
+    </div>
+    <div class="acts">
+      <button class="big"   data-k="zap">ザッパー<br><small>対空</small></button>
+      <button class="big"   data-k="bomb">ブラスター<br><small>対地</small></button>
+      <button class="small" data-k="view">視点</button>
+      <button class="small" data-k="pause">一時停止</button>
+    </div>
+  </div>
+  <div id="help">← → ↑ ↓ / WASD 移動　　SPACE ザッパー（対空）　　Z ブラスター（対地）　　C 視点　　P 一時停止</div>
+</div>
 <script>
 "use strict";
 /* ================================================================== assets */
@@ -28,6 +73,8 @@ const MESH_DEF    = {"solvalou":{"code":80,"color":1,"px":1.9,"h":4.5,"grid":[[0
 const MUSIC       = {"fps":121.212,"start":{"frames":768,"loop":false,"voices":[{"wave":5,"freq":[[0,708.98],[64,0.0],[80,531.74],[96,708.98],[112,893.55],[128,1063.48],[144,893.55],[160,0.0],[176,708.98],[192,796.88],[208,0.0],[224,796.88],[256,0.0],[272,596.19],[304,0.0],[320,796.88],[336,708.98],[352,0.0],[368,669.43],[384,708.98],[448,0.0],[464,531.74],[480,708.98],[496,893.55],[512,1063.48],[528,893.55],[544,0.0],[560,708.98],[576,751.46],[592,0.0],[608,751.46],[640,0.0],[656,708.98]],"vol":"edcbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"wave":4,"freq":[[0,446.78],[64,0.0],[80,446.78],[112,531.74],[128,708.98],[144,531.74],[160,0.0],[176,446.78],[192,473.14],[208,0.0],[224,473.14],[256,0.0],[272,473.14],[304,0.0],[320,473.14],[352,0.0],[368,473.14],[384,446.78],[448,0.0],[464,446.78],[544,0.0],[560,446.78],[576,473.14],[592,0.0],[608,473.14],[640,0.0],[656,446.78]],"vol":"edcbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaedcbaaaaaaaaaaaa0000000000000000edcbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"wave":3,"freq":[[0,87.89],[64,0.0],[96,87.89],[160,0.0],[192,87.89],[256,0.0],[288,87.89],[352,0.0],[384,87.89],[448,0.0],[480,87.89],[544,0.0],[576,87.89],[640,0.0],[656,87.89]],"vol":"edcba65432100000edcba65432100000edcba65432100000edcba6543210000000000000000000000000000000000000edcba65432100000edcba65432100000edcba65432100000edcba6543210000000000000000000000000000000000000edcba65432100000edcba65432100000edcba65432100000edcba6543210000000000000000000000000000000000000edcba65432100000edcba65432100000edcba65432100000edcba6543210000000000000000000000000000000000000edcba65432100000edcba65432100000edcba65432100000edcba6543210000000000000000000000000000000000000edcba65432100000edcba65432100000edcba65432100000edcba6543210000000000000000000000000000000000000edcba65432100000edcba65432100000edcba65432100000edcba654321000000000000000000000edcba65432100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}]},"bgm":{"frames":384,"loop":true,"voices":[{"wave":0,"freq":[[0,531.74],[12,1063.48],[24,1003.42],[36,1063.48],[48,1340.33],[60,1063.48],[72,1003.42],[84,1063.48],[96,531.74],[108,1063.48],[120,947.75],[132,1063.48],[144,1340.33],[156,1063.48],[168,947.75],[180,1063.48],[192,531.74],[204,1063.48],[216,893.55],[228,1063.48],[240,1340.33],[252,1063.48],[264,893.55],[276,1063.48],[288,531.74],[300,1063.48],[312,843.75],[324,1063.48],[336,1340.33],[348,1063.48],[360,843.75],[372,1063.48]],"vol":"edcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaaedcbaaaaaaaa"}]},"airhit":{"frames":25,"loop":false,"voices":[{"wave":1,"freq":[[0,2128.42],[6,3188.96],[12,2387.7],[18,3578.61],[24,2680.66]],"vol":"edcbaaedcbaaedcbaaedcbaae"},{"wave":5,"freq":[[0,3578.61],[6,2680.66],[12,4018.07],[18,3008.79],[24,2254.39]],"vol":"edcbaaedcbaaedcbaaedcbaae"},{"wave":7,"freq":[[0,3008.79],[6,2254.39],[12,3377.93],[18,2529.79],[24,0.0]],"vol":"edcbaaedcbaaedcbaaedcbaa0"}]}};    /* sound_data.json: emulated WSG registers */
 const WAVE_ROM_B64= 'CQoLDA0NDg4ODQ0MCwoJBwUEAwIBAQAAAAEBAgMEBQcODg4ODg4ODg4ODg4ODg4OAAAAAAAAAAAAAAAAAAAAAAcKDA0ODQwKBwQCAQABAgQHCw0ODQsHAwEAAQMHDgcADg4ODg4ODg4AAAAAAAAAAA4ODgAAAA4ODg4OAAAAAAAODgAADAwNAw4ODAwMDA0HAQICAgIAAAsBAgIODgAABw4MBwoMBwUMDg0ICgsGAgcMCAMEBgEAAwkHAgQHAgAHDA4ODg4MCwkHBgUFBQYICgsLCQYEAgICAwUEAwIBAwcICw4NBw0ODQwLAwIBAAEHAQADBggODQwOCAMAAgEABg==';      /* xvi-2.7n: 8 waveforms x 32 samples */
 const CRATER      = {"w":16,"h":16,"pal":["#ae8f43","#8f431f","#622d1f","#d2d2ae","#000000","#430000","#ff0000"],"frames":[["................","................","......0120......","....31444415....","...0144444401...","...2644400600...","..044445122505..","..144426505502..","..044552555002..","..144551505605..","...2452505001...","...1500650021...","....21550025....","......1525......","................","................"],["................","................","......0120......","....31444415....","...0144444401...","...2444400500...","..044445122505..","..144421505502..","..044552555002..","..144551505005..","...2452505001...","...1500250021...","....21550025....","......1525......","................","................"]]};   /* sprite 166/167 @ colour 13 (ROM $31D7) */
+const FONT_B64    = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAYAAADS1n9/AAAE5ElEQVR4nO1X2Y7jQAj0//90ViNtpJ4OR1VBtx2PeUoM1AE4s3sc/+NlxDtn5aMcWjPmIw4PH6mp9DP6VW0V/eh8svwRifJEzsuL6hAcSyzKi+QzfZF/JL8Cv6ofnc/yA8jyY53VWzaY1KoLsvR7/hT8uY7Fh+eTCUSAxhxaY/F4+Qg/y6Neo/6II6pl9XuaFXw0Xz6AzEC2BGYYWb+ik/XDDjjjRfhQfkQvXFAdrGLAGmCmt6pT8cPwZ7yd80P0moEMHxmsh4HgexwZdlV/1o94i3hU/Wi/l7f6rZk/8QT+Bsw9HkbGgT5ncZk3RPF/pf53TYSJ5Mt/w7JFZnnPNIM71lmfK/7Ozivzo/C9waIEWR1rQMEd66zPGd/KBap5dX4sv1noDcjKZ0IYAyruWGd9jvCqA2Ty6gzQ+X3tn4CoBsEd66zPFX+/14LpY/iZObHPrZqP2uqAOowp/HO/1dPhT/HF8qNzYp8jdR9Jz4xK4OGiOJY2a4BWD6pT8Z/Nr4sf0YH0W1qeeCJ/c7yrUvLIlWZaFW8ZP/r2VHRnHAw+O8fQ//hl/uwJ84Y3k2ZiMuHVPnQ42bNoFhmuhWXNE10qorf1ACyAzFAkVFn+iNd5ANZimcUpUTkARq/FmSbVASAGqgNU+tkDmJ91aUdwEA5L75yLeNsOgDXQtfzUjNGH5C1vVm5+rnpQ8pambQcwf/YEMM/RsBYw43n4HQP1+I4TAjlYry/UPANGZisH4HFkprN+Dw/hQPrYgUc+1DyjV8X+yojMqUd2XDxYvW6dd03IGxvVeYQd2Myg0gFsxKp4QPuyuo+8sli0jq1ncFcNcCVWhb9TvwQcLUr9rmjyctmR3D2PzM7Mo2QWcfU7LJIwGHlCPEeYFXzGl9fL4kB5b0nfdgCRznc+wkAGh/R7/Iwvr5fFgfLokr7hAKKaHQdQ8TXmFf0sh/vgBUTWq2IrGqKeK+Wz5Vj+mTySs7C2/hsgw1bq7hI7fIbYKOmdl4DGLf0/B4DHLf1bP99I3fgs+hlTfvJX5D1vnfgWR5SftVk6K/iI/nRAHtFY7xnJzKD5rgGgvpi6nQeg8KdzCK/jRgeQ+cpmcNYBzBpZ/qy/9N+MOxwAWrtiAcwBeBpQ/+4MrnAAc6zIr/4FQPqR3t3zu3wwor/SYGP8df9PDFF+46OfJwW8q0/R0+VjBYY6B7QWxU8JVcOKAUVLhLnSB4ujciteUWyYtAK+aujsUKo+IjylV+XMamgzKHHH0Cq9yjIrC2MwlT6FT8mnwBXyDvEMBjv87uV7uKt6xr5OzBR4rqOADXFV/q4DUHwg2KsPoFPHlkCXryxR7a16ivCZ2pXHSBUzYpThtwsvcDBadmiK+JfjX+0AjovE2Qcwargc9qoDuFJcxZvC7+2ndWcKUPcgd7whZx/AqEXpue0BrF7QSvzKQpUe6QAysjMPoP2aAQ6mbwXu2Kv0tB8AK6hrSbKhIg/bx2hXdCk9f+IAuo6gegBzT6fmziNoI1o5/O7lWhyr+xjMs45Ejh0LYg5RwV+ti8HrOIIVO9lOpix/9ZCqi0GwOo4A7ulYGipO4VIMs/gdB6DyrjoCuEdZSkSE1Fb4qhq8foWnynuJOOMAOoe1axG3XP5PVA2oB9AxtF0Lue3yf6Jigh1G5/CypXQt5nXn5R/H8Q/N9MR8lKS67wAAAABJRU5ErkJggg==";    /* gfx1 0x00-0x7F in display orientation */
+const LOGO        = {"w":160,"h":48,"colour":"#ffff00","png":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAAwCAYAAACWqXFuAAAC3klEQVR4nO2SOZLDMAwE+f9Pa4MtZ5I5F0iViUlNzNHWGAW6Wq0HVXxv/fG1KPXH19qu/vha21X68aV9nfsq/7TPLv9KlX+EVeau39Ntuu8McHqH0lPt4m5Is1gWUDU84c10dXNSXVUfJz/JwQpJwnKhfW6TQFAGbE7KZ+a1+o7tbo1jA10f9D4FBt3OZiS9nL3KXaozpQSslfcpOOju9A62c0UXtfuokgPLLa7cJwB981C2IDuU3ivu3I4RKbDc4uq9C2p2n+yDSu3q3jnd4mJgucWdexeWs01lhii5FblTO5WKhZaGgw53gM1u0V7Ijs8N8xbNUBmn/oMyobDSYJjhFfmpN09d0jcuZ9V7iSqKJ4dXdEDfIDueerC3rH9yw9gtFJYLRM1J9kh3TbCYvVUzmB5jtxhYrgebxfZB36f6VTNR/dkeY6dcIMw9m5PskupcxZbNYu7Su2JKQFE8mAy0B/M20auSMZLH3lXtk5UE43jN/NPv0turGM+ylLv0PlkumLuiCc877/S7RNcUY7a3ulfpVaYrqFXjEC8mb9bP3cHcV2SoPBkPSUjwJ5x5Wz3O6ar4OTvYO9bfvXP3yUICGTjfiqbHzXzYHPQ9u4N9j9yw/Z9uKn3sIGfs062ax26Y/cZuUneg71xOao6bKwsJmoWpHsmRaAfEm71RstEuDCc3h82zhQQlS995rc5HfNM3ao+UfzoH8YkNWuGZ6oHmz/wq7pxdjj+Tk+5rD1npneiDZs+83tAh4c/kVPWVB1RnJO/YbY5P5X5UqZ2r+tLFq7OcjomNVd3THqo/k5PyiQTFwr5kOl2dW8YnxWcH39Ws7KJVcO6ync7qnbIzyWglXyYnwUku+KsaL9H1A2oQO8EdzrxB7IZ3MPeG8BaIB3JfCmH8kK6Xapymk8FcL9M4TaeDuV6mcZIayr+ul2icpIbS2qb++Frb1R9fa7v642ttV398re3qj681FuoPp3pF3NILxsEAAAAASUVORK5CYII="};     /* attract-mode XEVIOUS logo (ROM tiles) */
 
 /* ================================================================= consts */
 const W = 640, H = 480;
@@ -752,6 +799,26 @@ const S = {
 
 let air=[], shots=[], ebullets=[], ground=[], scripted=[], fx=[], parts=[], scorches=[];
 const keys = Object.create(null);
+const padState = { zap:false, bomb:false };
+
+try { S.hi = Number(localStorage.getItem('xevi3d_hi') || 0) || 0; } catch(e){}
+function saveHi(){ try { localStorage.setItem('xevi3d_hi', String(S.hi)); } catch(e){} }
+
+function cyclePitch(){
+  S.pitchIdx = (S.pitchIdx + 1) % PITCH_STEPS.length;
+  S.pitchTarget = PITCH_STEPS[S.pitchIdx];
+}
+function togglePause(){
+  if (S.mode === 'play'){ S.mode = 'pause'; musicStop(); }
+  else if (S.mode === 'pause'){ S.mode = 'play'; playMainTheme(); }
+}
+/* every "fire" entrypoint funnels through here so the on-screen pad and the
+   keyboard behave identically (and a tap starts the game from the title) */
+function tapZap(){
+  if (S.mode === 'title' || S.mode === 'over'){ startGame(); return; }
+  if (S.mode === 'play') fireZapper();
+}
+function tapBomb(){ if (S.mode === 'play') fireBlaster(); }
 
 addEventListener('pointerdown', () => { audioInit(); if (AU.ctx && AU.ctx.state==='suspended') AU.ctx.resume(); });
 addEventListener('keydown', e => {
@@ -759,24 +826,125 @@ addEventListener('keydown', e => {
   const k = e.key;
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(k)) e.preventDefault();
   keys[k.toLowerCase()] = true;
-  if (k === ' ') {
-    if (S.mode === 'title' || S.mode === 'over') startGame();
-    else if (S.mode === 'play') fireZapper();
-  }
-  if (k.toLowerCase() === 'z' && S.mode === 'play') fireBlaster();
-  if (k.toLowerCase() === 'p' && (S.mode === 'play' || S.mode === 'pause')){
-    if (S.mode === 'play'){ S.mode = 'pause'; musicStop(); }
-    else { S.mode = 'play'; playMainTheme(); }
-  }
-  if (k.toLowerCase() === 'c'){
-    S.pitchIdx = (S.pitchIdx + 1) % PITCH_STEPS.length;
-    S.pitchTarget = PITCH_STEPS[S.pitchIdx];
-  }
+  if (k === ' ') tapZap();
+  if (k.toLowerCase() === 'z') tapBomb();
+  if (k.toLowerCase() === 'p') togglePause();
+  if (k.toLowerCase() === 'c') cyclePitch();
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
+/* ---- on-screen controls (phone / tablet).  The buttons sit *below* the
+   play area in their own row, so they never cover the game.  Each pointer is
+   captured by its own button, which makes pressing two at once reliable. */
+function setPad(k, down){
+  switch (k){
+    case 'left':  keys['arrowleft']  = down; break;
+    case 'right': keys['arrowright'] = down; break;
+    case 'up':    keys['arrowup']    = down; break;
+    case 'down':  keys['arrowdown']  = down; break;
+    case 'zap':   padState.zap  = down; if (down) tapZap();  break;
+    case 'bomb':  padState.bomb = down; if (down) tapBomb(); break;
+    case 'view':  if (down) cyclePitch(); break;
+    case 'pause': if (down) togglePause(); break;
+  }
+}
+function bindPad(){
+  const pad = document.getElementById('pad');
+  for (const el of pad.querySelectorAll('button')){
+    const k = el.dataset.k;
+    const down = e => {
+      e.preventDefault();
+      el.classList.add('on');
+      try { el.setPointerCapture(e.pointerId); } catch(err){}
+      setPad(k, true);
+    };
+    const up = e => { e.preventDefault(); el.classList.remove('on'); setPad(k, false); };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  /* tapping the playfield starts the game, like SPACE on the keyboard */
+  cvs.addEventListener('pointerdown', e => {
+    if (S.mode === 'title' || S.mode === 'over') startGame();
+  });
+}
+/* scale the 640x480 canvas to whatever room is left beside the pad */
+function fit(){
+  const pad  = document.getElementById('pad');
+  const help = document.getElementById('help');
+  const padShown = pad && getComputedStyle(pad).display !== 'none';
+  const padH  = padShown ? pad.offsetHeight + 8 : 0;
+  const helpH = (help ? help.offsetHeight : 0) + 8;
+  const availW = Math.max(200, window.innerWidth  - 24);
+  const availH = Math.max(150, window.innerHeight - 24 - padH - helpH);
+  const s = Math.min(availW / W, availH / H);
+  cvs.style.width  = Math.round(W * s) + 'px';
+  cvs.style.height = Math.round(H * s) + 'px';
+}
+addEventListener('resize', fit);
+addEventListener('orientationchange', () => setTimeout(fit, 150));
+
 function banner(txt){ S.msgText = txt; S.msg = 120; }
+
+/* ============================================================ attract mode
+   The arcade keeps an idle demo running behind the title artwork: the main
+   ROM's `attract_mode_gameplay` stage starts SOLVALOU_SND only when
+   attract_mode_stage is 0, so the demo runs *without* the theme.  We do the
+   same, and the demo Solvalou is invulnerable (it is a recording, not a run). */
+function demoAI(){
+  keys['arrowleft'] = keys['arrowright'] = keys['arrowup'] = false;
+  let tgt = null, bd = 1e9, airTarget = false;
+  for (const e of air){
+    if (e.dead) continue;
+    const dz = e.z - S.camZ;
+    if (dz < 80 || dz > 760) continue;
+    const d = Math.abs(e.x - S.px) + dz*0.30;
+    if (d < bd){ bd = d; tgt = e; airTarget = true; }
+  }
+  for (const g of ground){
+    if (!g.alive || g.hidden) continue;
+    const dz = g.z - S.camZ;
+    if (dz < 80 || dz > 560) continue;
+    const d = Math.abs(g.x - S.px) + dz*0.55 + 30;
+    if (d < bd){ bd = d; tgt = g; airTarget = false; }
+  }
+  if (tgt){
+    const dx = tgt.x - S.px;
+    if (dx < -6) keys['arrowleft'] = true;
+    else if (dx > 6) keys['arrowright'] = true;
+    const dz = tgt.z - S.camZ;
+    if (Math.abs(dx) < 26 && dz < (airTarget ? 520 : 430)){
+      if (airTarget){ if ((S.t % 7) === 0) fireZapper(); }
+      else if ((S.t % 17) === 0) fireBlaster();
+    }
+  }
+  if ((S.t % 900) < 40) keys['arrowup'] = true;      /* occasional surge */
+}
+
+function resetRun(mode){
+  S.mode = mode; S.score = 0; S.lives = 3; S.area = 1;
+  S.camZ = START_Z; S.px = BANDC; S.camX = BANDC; S.bank = 0; S.py = 0;
+  S.wave = 0; S.waveT = 30; S.diff = 0; S.diffAt = START_Z; S.lap = 0;
+  S.msg = 0; S.msgText = ''; S.secret = 0; S.overTimer = 0;
+  air = []; shots = []; ebullets = []; fx = []; parts = []; scorches = [];
+  buildGround();
+}
+
+function startGame(){
+  resetRun('play');
+  S.inv = 46; S.t = 0;
+  banner('AREA 1');
+  playStartFanfare();          /* MAIN_THEME_SND, then SOLVALOU_SND loops */
+}
+
+function enterTitle(){
+  resetRun('title');
+  S.inv = 0; S.t = 0;
+  musicStop();                 /* attract mode is played without the theme */
+  fit();
+}
 
 /* ============================================================ ROM content */
 function buildGround(){
@@ -806,12 +974,9 @@ function buildGround(){
 }
 
 function startGame(){
-  S.mode='play'; S.score=0; S.lives=3; S.area=1; S.inv=46;
-  S.camZ=START_Z; S.px=BANDC; S.bank=0; S.py=0; S.t=0;
-  S.wave=0; S.waveT=30; S.diff=0; S.diffAt=START_Z; S.lap=0;
-  air=[]; shots=[]; ebullets=[]; fx=[]; parts=[]; scorches=[];
-  buildGround();
-  banner('AREA 1  —  ROM配置');
+  resetRun('play');
+  S.inv = 46; S.t = 0;
+  banner('AREA 1');
   playStartFanfare();          /* MAIN_THEME_SND, then SOLVALOU_SND loops */
 }
 
@@ -1015,6 +1180,7 @@ function boom(x,y,z,big){
 }
 
 function damage(){
+  if (S.mode==='title') return;              /* the attract demo is a recording */
   if (S.inv>0) return;
   S.lives--; S.inv=150;
   S.diff = clamp(S.diff-16, 0, 127);        // arcade NORMAL: -16
@@ -1024,28 +1190,43 @@ function damage(){
   ebullets = ebullets.filter(b =>
     Math.abs(b.x-S.px)>150 || Math.abs(b.z-PZ)>700);
   boom(S.px, SHIP_Y, S.camZ+SHIP_DZ, true);
-  if (S.lives<=0){ S.mode='over'; S.overTimer=0; S.hi=Math.max(S.hi,S.score); musicStop(); }
+  if (S.lives<=0){
+    S.mode='over'; S.overTimer=0;
+    if (S.score>S.hi){ S.hi=S.score; saveHi(); }
+    musicStop();
+  }
   /* The MAIN_THEME_SND fanfare is the level-start jingle (startGame only).
      After losing a ship the in-flight theme (SOLVALOU_SND) keeps running, so
      no fanfare is replayed here.  sfx('die') above is the 54XX explosion. */
 }
-function addScore(v){ S.score+=v; if (S.score>S.hi) S.hi=S.score; }
+function addScore(v){
+  S.score += v;
+  if (S.mode!=='title' && S.score>S.hi){ S.hi=S.score; saveHi(); }
+}
 
 /* ================================================================ update */
 function update(){
   S.t++;
   if (S.msg>0) S.msg--;
   if (S.secret>0) S.secret--;
+  /* the arcade holds the GAME OVER screen for 128 frames, then goes back to
+     the attract loop (game_over_1_player -> main_thread_main_loop) */
+  if (S.mode==='over'){
+    if (++S.overTimer > 128){ enterTitle(); return; }
+  }
 
   /* smooth the camera pitch, then use PC/PS everywhere in the projection */
   S.pitch += (S.pitchTarget - S.pitch) * 0.18;
   PC = Math.cos(S.pitch); PS = Math.sin(S.pitch);
 
-  if (S.mode==='title'){
-    S.camX = BANDC;
-    return;
+  if (S.mode==='title') demoAI();
+  if (S.mode!=='play' && S.mode!=='title') return;
+
+  /* held pad buttons auto-fire, like holding the arcade button */
+  if (S.mode === 'play'){
+    if (padState.zap  && (S.t % 6)  === 0) fireZapper();
+    if (padState.bomb && (S.t % 20) === 0) fireBlaster();
   }
-  if (S.mode!=='play') return;
 
   /* ---- camera / player ------------------------------------------------ */
   const ax = (keys['arrowleft']||keys['a']?-1:0) + (keys['arrowright']||keys['d']?1:0);
@@ -1066,7 +1247,7 @@ function update(){
   if (S.camZ > LOOP_Z + S.lap*MAPH){
     S.lap++; S.area++; S.wave=0; S.waveT=30;
     buildGround();
-    banner('AREA '+S.area+'  —  ROM配置');
+    if (S.mode==='play') banner('AREA '+S.area);
     sfx('area');
   }
 
@@ -1752,15 +1933,9 @@ function render(){
   if (S.secret>0 && S.mode==='play'){
     ctx.save();
     ctx.globalAlpha=Math.min(1,S.secret/40);
-    ctx.font='bold 22px "Consolas","Courier New",monospace';
-    ctx.fillStyle='#ffe066';
-    ctx.textAlign='center';
-    ctx.fillText('ORIGINAL', W/2, H-92);
-    ctx.font='12px "Consolas","Courier New",monospace';
-    ctx.fillStyle='#b9c6d8';
-    ctx.fillText('HIDDEN MESSAGE  10 pts', W/2, H-72);
+    romText('ORIGINAL', W/2, H-104, 3, '#ffe066', 'center');
+    romText('HIDDEN MESSAGE 10 PTS', W/2, H-72, 1, '#b9c6d8', 'center');
     ctx.restore();
-    ctx.textAlign='left';
   }
 
   hud();
@@ -1784,61 +1959,112 @@ function drawPlayer(){
   }
 }
 
+/* ============================================ ROM text (gfx1) and the logo */
+let FONT_IMG = null, LOGO_IMG = null;
+const TINT = Object.create(null);
+/* FG characters are 1bpp masks; MAME maps pen 1 to a base palette entry, so a
+   single colour per run.  Tint the white atlas once per colour. */
+function tinted(img, colour){
+  if (!img) return null;
+  const key = (img === FONT_IMG ? 'f' : 'l') + colour;
+  let cv = TINT[key];
+  if (cv) return cv;
+  cv = document.createElement('canvas');
+  cv.width = img.width; cv.height = img.height;
+  const g = cv.getContext('2d');
+  g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = colour;
+  g.fillRect(0, 0, cv.width, cv.height);
+  TINT[key] = cv;
+  return cv;
+}
+/* ROM FG codes: 0x00-0x09 '0'-'9', 0x0A-0x23 'A'-'Z', 0x24 space, 0x25 ship */
+function romCode(ch){
+  const c = ch.charCodeAt(0);
+  if (ch >= '0' && ch <= '9') return c - 48;
+  if (ch >= 'A' && ch <= 'Z') return 0x0A + (c - 65);
+  if (ch === '.') return 0x50;
+  return 0x24;
+}
+function romTiles(codes, x, y, s, colour, align, shadow){
+  const tex = tinted(FONT_IMG, colour);
+  if (!tex) return;
+  const w = codes.length * 8 * s;
+  let px = align === 'center' ? Math.round(x - w/2)
+         : align === 'right'  ? Math.round(x - w) : Math.round(x);
+  if (shadow){
+    const sh = tinted(FONT_IMG, '#000000');
+    const o = Math.max(1, Math.round(s*0.7));
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    for (let i=0;i<codes.length;i++)
+      ctx.drawImage(sh, (codes[i] & 15) * 8, (codes[i] >> 4) * 8, 8, 8,
+                    px + i*8*s + o, y + o, 8*s, 8*s);
+    ctx.restore();
+  }
+  for (const code of codes){
+    ctx.drawImage(tex, (code & 15) * 8, (code >> 4) * 8, 8, 8, px, y, 8*s, 8*s);
+    px += 8 * s;
+  }
+}
+function romText(str, x, y, s, colour, align, shadow){
+  romTiles([...str].map(romCode), x, y, s, colour, align, shadow);
+}
+/* display_score writes 3 BCD bytes plus a fixed trailing '0': 7 characters */
+function scoreText(v){ return String(Math.max(0, v|0)).padStart(7, ' '); }
+
+/* strCOPYRIGHT ($3ECD): "@(c) 1982 NAMCO LTD."  The ROM's leading 0x2D/0x2E
+   are the two halves of a 16x8 (c) that the FG layer draws as one mark; the
+   single-tile (c) is 0x28, so the line reads correctly with that one. */
+const COPY_CODES = [0x28,0x24,0x01,0x09,0x08,0x02,0x24,
+                    0x17,0x0A,0x16,0x0C,0x18,0x24,0x15,0x1D,0x0D,0x50];
+
+/* The arcade HUD, in the ROM's own places and colours:
+     display_high_score_text  (attr 0x1F -> #ffae00) top centre
+     display_player_scores    (attr 0x24 -> #d2d2d2) top left
+     display_solvalou_left    (attr 0x2A -> #e0bc62) bottom left, icon 0x25
+   Positions on the 224x288 portrait screen: label (81,0), hi digits (89,8),
+   score (9,8), lives (9,280).  Our view is 640x480, so the same arrangement is
+   scaled by 2. */
+const HUD_S = 2, HUD_Y = 6;
+function drawHud(){
+  romText('HIGH SCORE', W/2, HUD_Y, HUD_S, '#ffae00', 'center', true);
+  romText(scoreText(S.hi), W/2, HUD_Y + 8*HUD_S + 2, HUD_S, '#d2d2d2', 'center', true);
+  romText(scoreText(S.score), 12, HUD_Y + 8*HUD_S + 2, HUD_S, '#d2d2d2', 'left', true);
+  const lives = clamp(S.lives - 1, 0, 8);
+  for (let i=0;i<lives;i++)
+    romTiles([0x25], 12 + i*9*HUD_S, H - 8*HUD_S - 10, HUD_S, '#e0bc62', 'left', true);
+}
+
 function hud(){
   ctx.save();
-  ctx.font='bold 15px "Yu Gothic UI","Meiryo",sans-serif';
   ctx.textBaseline='top';
-  ctx.fillStyle='rgba(0,0,0,.45)';
-  ctx.fillRect(0,0,W,30);
-  ctx.fillStyle='#d8e6ff';
-  ctx.fillText('スコア '+String(S.score).padStart(6,'0'),10,7);
-  ctx.fillText('ハイ '+String(S.hi).padStart(6,'0'),190,7);
-  ctx.fillStyle='#9fe0a0';
-  ctx.fillText('エリア '+S.area,350,7);
-  ctx.fillStyle='#ffd76a';
-  ctx.fillText('のこり '+Math.max(0,S.lives),455,7);
-  ctx.fillStyle='#8fd0ff';
-  ctx.fillText('視点 '+PITCH_NAMES[S.pitchIdx],545,7);
+  drawHud();
 
   if (S.mode==='title'){
-    ctx.fillStyle='rgba(4,8,16,.74)';
-    ctx.fillRect(0,0,W,H);
-    ctx.textAlign='center';
-    ctx.fillStyle='#bfe0ff';
-    ctx.font='bold 42px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('XEVIOUS 3D', W/2, 92);
-    ctx.font='bold 16px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillStyle='#9db4d0';
-    ctx.fillText('エリア1の実データ地形を、ROM配置の敵と 3D で飛ぶ', W/2, 152);
-    ctx.fillStyle='#7fd6a8';
-    ctx.font='13px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('固定地上物 26 体はエリア1スクリプトの row / x に一致', W/2, 178);
-    ctx.fillText('空中物は 0x81A0.. のパラメータで決定的に出現', W/2, 198);
-    ctx.fillStyle='#ffe08a';
-    ctx.font='bold 20px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('SPACE でスタート', W/2, 246);
-    ctx.fillStyle='#6f8098';
-    ctx.font='14px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('← → / A D … 左右移動　　↑ ↓ / W S … 前進・後退', W/2, 292);
-    ctx.fillText('SPACE … ザッパー（対空）　　Z … ブラスター（対地）', W/2, 314);
-    ctx.fillText('C … 視点切り替え（標準／中／高）　　P … 一時停止', W/2, 336);
-    ctx.textAlign='left';
+    /* attract-mode artwork: the yellow logo the ROM draws over the demo */
+    const s = 2, lw = LOGO.w*s, lh = LOGO.h*s;
+    const lx = Math.round((W-lw)/2), ly = 56;
+    const tex = tinted(LOGO_IMG, LOGO.colour), sh = tinted(LOGO_IMG, '#000000');
+    if (tex){
+      ctx.globalAlpha = 0.72;
+      for (const [dx,dy] of [[-3,0],[3,0],[0,-3],[0,3],[-3,-3],[3,3],[-3,3],[3,-3]])
+        ctx.drawImage(sh, lx+dx, ly+dy, lw, lh);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(tex, lx, ly, lw, lh);
+    }
+    if (((S.t >> 5) & 1) === 0)
+      romText('PUSH START BUTTON', W/2, ly+lh+36, 2, '#ffff00', 'center', true);
+    romTiles(COPY_CODES, W/2, H-18, 1, '#d2d2d2', 'center', true);
   }
 
   if (S.mode==='over'){
-    ctx.fillStyle='rgba(40,0,0,.55)';
+    /* the arcade holds GAME OVER for 128 frames, then returns to attract */
+    ctx.fillStyle='rgba(20,0,0,.38)';
     ctx.fillRect(0,0,W,H);
-    ctx.textAlign='center';
-    ctx.fillStyle='#ff9a9a';
-    ctx.font='bold 36px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('ゲームオーバー', W/2, 190);
-    ctx.fillStyle='#ffe08a';
-    ctx.font='bold 20px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('スコア '+S.score, W/2, 250);
-    ctx.fillStyle='#9db4d0';
-    ctx.font='16px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('SPACE でもう一度', W/2, 300);
-    ctx.textAlign='left';
+    romText('GAME OVER', W/2, 196, 3, '#ff0000', 'center');
+    romText(scoreText(S.score), W/2, 250, 2, '#d2d2d2', 'center');
   }
 
   if (S.mode==='pause'){
@@ -1849,18 +2075,13 @@ function hud(){
     ctx.font='bold 34px "Yu Gothic UI","Meiryo",sans-serif';
     ctx.fillText('一時停止', W/2, 200);
     ctx.font='16px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('P で再開', W/2, 252);
+    ctx.fillText('P / 一時停止で再開', W/2, 252);
     ctx.textAlign='left';
   }
 
   if (S.msg>0 && S.mode==='play' && S.secret<=0){
-    const a=Math.min(1,S.msg/40);
-    ctx.globalAlpha=a;
-    ctx.textAlign='center';
-    ctx.fillStyle='#ffe08a';
-    ctx.font='bold 30px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText(S.msgText, W/2, 96);
-    ctx.textAlign='left';
+    ctx.globalAlpha=Math.min(1,S.msg/40);
+    romText(S.msgText, W/2, 96, 3, '#ffff00', 'center');
     ctx.globalAlpha=1;
   }
   ctx.restore();
@@ -1889,16 +2110,22 @@ async function boot(){
   buildModels();
   atlasImg = await loadImage('data:image/png;base64,'+ATLAS_B64);
   for (const k in ATLAS_JSON.sprites) SPR[k]=ATLAS_JSON.sprites[k];
+  FONT_IMG = await loadImage('data:image/png;base64,'+FONT_B64);
+  LOGO_IMG = await loadImage(LOGO.png);
   terr32 = await decodeTerrain();
   S.camX = BANDC;
   buildGround();
+
+  bindPad();
+  fit();
+  requestAnimationFrame(fit);        /* after the pad's first layout */
+  enterTitle();
 
   let last=performance.now(), acc=0;
   function frame(now){
     acc += Math.min(now-last,100); last=now;
     while (acc>=16.6667){ update(); acc-=16.6667; }
-    if (S.mode==='over') S.overTimer++;
-  render();
+    render();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
