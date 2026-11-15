@@ -149,11 +149,26 @@ const sign  = v => v<0?-1:1;
 const TAU   = Math.PI*2;
 
 const cvs = document.getElementById('c');
-const ctx = cvs.getContext('2d', { alpha:false });
+const dctx = cvs.getContext('2d', { alpha:false });
+dctx.imageSmoothingEnabled = false;
+
+/* The whole frame is composed on an offscreen canvas and shown with a single
+   drawImage.  Two Chrome 2D-canvas quirks made the ROM text and the title logo
+   flicker on Android: commands issued after a putImageData on the *visible*
+   canvas can be dropped, and a canvas that is being repainted can be presented
+   mid-update.  Keeping the display canvas to one blit removes both. */
+const frameCv = document.createElement('canvas');
+frameCv.width = W; frameCv.height = H;
+const ctx = frameCv.getContext('2d', { alpha:false });
 ctx.imageSmoothingEnabled = false;
 
-const screen = ctx.createImageData(W,H);
-const buf32  = new Uint32Array(screen.data.buffer);
+/* The terrain is rasterised into its own canvas (putImageData) and then blitted
+   into the frame, so putImageData never shares a canvas with drawImage. */
+const terrCv  = document.createElement('canvas');
+terrCv.width  = W; terrCv.height = H;
+const terrCtx = terrCv.getContext('2d', { alpha:false, willReadFrequently:true });
+const screen  = terrCtx.createImageData(W,H);
+const buf32   = new Uint32Array(screen.data.buffer);
 let terr32 = null;
 let atlasImg = null;
 const SPR = {};
@@ -2152,7 +2167,8 @@ function drawTerrain(){
       }
     }
   }
-  ctx.putImageData(screen,0,0);
+  terrCtx.putImageData(screen,0,0);
+  ctx.drawImage(terrCv,0,0);
 }
 
 function drawSol(g){
@@ -2372,6 +2388,9 @@ function render(){
   }
 
   hud();
+  /* present the finished frame with one blit: the visible canvas is never
+     partially painted and never sees a putImageData */
+  dctx.drawImage(frameCv,0,0);
 }
 
 function drawPlayer(){
