@@ -22,38 +22,44 @@
     max-width:100%;touch-action:none;}
   #help{color:#7f8fa8;font-size:12px;letter-spacing:.06em;text-align:center;
     pointer-events:none;flex:0 0 auto;line-height:1.5;}
-  /* ---- on-screen controls: always *below* the play area, never on top ---- */
-  #pad{display:none;flex:0 0 auto;width:100%;max-width:640px;flex-wrap:wrap;
-    justify-content:space-between;align-items:flex-end;gap:12px;}
-  #pad.show{display:flex;}
-  #pad .start{order:-1;flex:1 0 100%;height:46px;font-size:15px;letter-spacing:.18em;
+  /* ---- on-screen controls: always *below* the play area, never on top ----
+     Two fixed columns (dpad | action buttons) so the action buttons can never
+     wrap underneath the movement pad, whatever the viewport width is. */
+  #pad{display:none;width:100%;max-width:640px;
+    grid-template-columns:auto minmax(0,1fr);
+    grid-template-areas:"start start" "dpad acts";
+    align-items:end;gap:8px;}
+  #pad.show{display:grid;}
+  #pad .start{grid-area:start;height:46px;font-size:15px;letter-spacing:.18em;
     background:#1c2b42;border-color:#3d5a80;color:#dff0ff;}
+  #pad .wide{grid-column:1 / -1;}
   #pad button{font:inherit;color:#cfe0ff;background:#18202e;border:1px solid #33445e;
     border-radius:10px;padding:0;touch-action:none;-webkit-user-select:none;user-select:none;
     -webkit-touch-callout:none;
     display:flex;align-items:center;justify-content:center;font-weight:700;}
   #pad button:active,#pad button.on{background:#2b4a72;border-color:#7fb4ff;color:#fff;}
-  .dpad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(2,54px);gap:6px;}
+  .dpad{grid-area:dpad;display:grid;grid-template-columns:repeat(3,54px);
+        grid-template-rows:repeat(2,54px);gap:6px;}
   .dpad .up{grid-column:2;grid-row:1;font-size:20px;}
   .dpad .left{grid-column:1;grid-row:2;font-size:20px;}
   .dpad .down{grid-column:2;grid-row:2;font-size:20px;}
   .dpad .right{grid-column:3;grid-row:2;font-size:20px;}
-  .acts{display:grid;grid-template-columns:repeat(2,minmax(92px,1fr));gap:6px;}
+  .acts{grid-area:acts;display:grid;grid-template-columns:repeat(2,minmax(92px,1fr));gap:6px;}
   .acts .big{height:58px;font-size:12px;line-height:1.15;text-align:center;flex-direction:column;}
   .acts .big small{display:block;font-size:10px;font-weight:400;opacity:.7;}
   .acts .small{height:38px;font-size:12px;color:#9fb2ca;}
   @media (pointer:coarse), (max-width:820px){
-    #pad{display:flex;gap:8px;
+    #pad{display:grid;gap:6px;
          /* keep the pad off the very bottom edge (browser bars / home indicator) */
-         margin-bottom:clamp(24px, 10vh, 90px);}
-    #pad.show{display:flex;}
+         margin-bottom:clamp(16px, 6vh, 60px);}
+    #pad.show{display:grid;}
     #play{align-items:flex-start;}     /* playfield at the top ... */
-    .dpad{grid-template-columns:repeat(3, clamp(48px, 15.5vw, 66px));
-          grid-template-rows:repeat(2, clamp(48px, 15.5vw, 66px));gap:5px;}
-    .dpad button{font-size:24px;}
-    .acts{grid-template-columns:repeat(2, minmax(70px, 1fr));gap:5px;}
-    .acts .big{height:clamp(54px, 16vw, 70px);font-size:14px;}
-    .acts .small{height:46px;font-size:13px;}
+    .dpad{grid-template-columns:repeat(3, clamp(44px, 13vw, 60px));
+          grid-template-rows:repeat(2, clamp(44px, 13vw, 60px));gap:5px;}
+    .dpad button{font-size:22px;}
+    .acts{grid-template-columns:repeat(2, minmax(64px, 1fr));gap:5px;}
+    .acts .big{height:clamp(50px, 14vw, 66px);font-size:13px;}
+    .acts .small{height:40px;font-size:12px;}
     #help{display:none;}
   }
 </style>
@@ -74,6 +80,7 @@
       <button class="big"   data-k="bomb">ブラスター<br><small>対地</small></button>
       <button class="small" data-k="view">視点</button>
       <button class="small" data-k="pause">一時停止</button>
+      <button class="small wide" data-k="inv">無敵</button>
     </div>
   </div>
   <div id="help">← → ↑ ↓ / WASD 移動　　SPACE ザッパー（対空）　　Z ブラスター（対地）　　C 視点　　P 一時停止</div>
@@ -100,22 +107,25 @@ const CAMH      = 190;      // camera height above the ground plane
 const MAPW = 1024;
 
 /* Areas 1..4: each one is a 224-px column of the ROM map (x0 from the table at
-   main 0x3EB3) plus its own object script.  The terrain rows repeat every
-   AREA_LEN rows after the forest, so the camera can keep flying for ever. */
+   main 0x3EB3) plus its own object script.  The world x stays the same for
+   every area - only the map column used to sample the terrain changes, row by
+   row - so nothing jumps when an area ends: the next column is already drawn
+   in the distance and fades in around the boundary. */
 const AREA_LEN = 2048;              // one area = 2048 map rows
+const AREA_BLEND = 240;             // rows of cross-fade around an area seam
 let   AREA_N   = 1;                 // current area number (1..4, cycles)
 let   STAGE    = 1;                 // how many area blocks we have flown through
-let   X0 = 520, BANDC = 632, PXMIN = 532, PXMAX = 733;
+const BANDC = 632, PXMIN = 532, PXMAX = 733;   // the 224-unit play band (fixed)
 function stageStartZ(s){ return AREA1_ROW + (s-1)*AREA_LEN; }
-function applyArea(n){
-  const a = AREAS[n] || AREAS[1];
-  AREA_N = n;
-  X0 = a.x0; BANDC = X0 + 112;
-  PXMIN = X0 + 12; PXMAX = X0 + 213;
+/* sampling offset for a (0-based) stage: puts that area's band centre under
+   the ship's world x */
+function areaOff(stage){
+  const n = ((stage % 4) + 4) % 4 + 1;
+  return (AREAS[n] ? AREAS[n].x0 : 520) + 112 - BANDC;
 }
 function setStage(s){
   STAGE = s;
-  applyArea(((s - 1) % 4) + 1);     // areas 1..4 then repeat
+  AREA_N = ((s - 1) % 4) + 1;       // areas 1..4 then repeat
 }
 
 const START_Z = 150;                // camera z before the start forest
@@ -888,7 +898,7 @@ const S = {
   camZ:START_Z, spd:SCROLL, px:BANDC, camX:BANDC, bank:0, py:0, inv:0,
   msg:0, msgText:'', overTimer:0, wave:0, waveT:0, secret:0,
   diff:0, diffAt:0, lap:0,
-  pitchIdx:0, pitch:0, pitchTarget:0
+  pitchIdx:0, pitch:0, pitchTarget:0, invincible:false
 };
 
 let air=[], shots=[], ebullets=[], ground=[], scripted=[], fx=[], parts=[], scorches=[];
@@ -905,6 +915,14 @@ function cyclePitch(){
 function togglePause(){
   if (S.mode === 'play'){ S.mode = 'pause'; musicStop(); }
   else if (S.mode === 'pause'){ S.mode = 'play'; playMainTheme(); }
+}
+/* debug: the M key (or the 無敵 button) makes the solvalou indestructible */
+function toggleInvincible(){
+  S.invincible = !S.invincible;
+  if (S.invincible) S.inv = 0;
+  const b = document.querySelector('#pad button[data-k="inv"]');
+  if (b) b.classList.toggle('on', S.invincible);
+  if (S.invincible) sfx('extra');
 }
 /* every "fire" entrypoint funnels through here so the on-screen pad and the
    keyboard behave identically (and a tap starts the game from the title) */
@@ -925,6 +943,7 @@ addEventListener('keydown', e => {
   if (k.toLowerCase() === 'z') tapBomb();
   if (k.toLowerCase() === 'p') togglePause();
   if (k.toLowerCase() === 'c') cyclePitch();
+  if (k.toLowerCase() === 'm') toggleInvincible();
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -942,6 +961,7 @@ function setPad(k, down){
     case 'bomb':  padState.bomb = down; if (down) tapBomb(); break;
     case 'view':  if (down) cyclePitch(); break;
     case 'pause': if (down) togglePause(); break;
+    case 'inv':   if (down) toggleInvincible(); break;
     case 'start': if (down) tapZap(); break;   /* same entry point as SPACE */
   }
 }
@@ -987,12 +1007,20 @@ function fit(){
   const sig = [Math.round(vw), Math.round(vh), Math.round(padH), Math.round(helpH)].join('|');
   if (sig === _fitSig) return;
   _fitSig = sig;
-  stage.style.height = Math.round(vh) + 'px';
+  /* only move things when the size really changed: the mobile toolbars fire
+     visualViewport events in bursts and re-laying out on each one makes the
+     top of the canvas flicker */
   const availW = Math.max(200, vw - 24);
   const availH = Math.max(150, vh - 24 - padH - helpH);
   const s = Math.min(availW / W, availH / H);
-  cvs.style.width  = Math.round(W * s) + 'px';
-  cvs.style.height = Math.round(H * s) + 'px';
+  const cw = Math.round(W*s), ch = Math.round(H*s);
+  if (Math.abs((parseFloat(cvs.style.width)||0) - cw) >= 2 ||
+      Math.abs((parseFloat(cvs.style.height)||0) - ch) >= 2){
+    cvs.style.width  = cw + 'px';
+    cvs.style.height = ch + 'px';
+  }
+  if (Math.abs((parseFloat(stage.style.height)||0) - Math.round(vh)) >= 2)
+    stage.style.height = Math.round(vh) + 'px';
 }
 function scheduleFit(){
   if (_fitTimer) clearTimeout(_fitTimer);
@@ -1096,13 +1124,14 @@ function buildGround(){
   const base = stageStartZ(STAGE);
   for (const s of AREAS[AREA_N].spawns){
     const z = base + s.z;                /* ROM row -> world row (verified) */
+    const x = BANDC + (112 - s.sx);      /* band-relative, same for all areas */
     if (s.where === 'air'){
-      scripted.push({ char:s.char, x:s.x, z:z, spawned:false, pts:s.pts });
+      scripted.push({ char:s.char, x:x, z:z, spawned:false, pts:s.pts });
       continue;
     }
     if (s.where === 'hidden'){
       ground.push({
-        char:s.char, x:s.x, z:z, mesh:MODEL[s.char]||null,
+        char:s.char, x:x, z:z, mesh:MODEL[s.char]||null,
         hidden:true, revealed:false, alive:true, pts:s.pts,
         spin:0, glint:0, y:0, scale:1, revealT:-1
       });
@@ -1115,19 +1144,19 @@ function buildGround(){
     if (s.char === 'boza_logram'){
       const grp = { pods:[], core:null, podsDead:0 };
       for (const [dx,dz] of [[-12,0],[12,0],[0,-12],[0,12]]){
-        const pod = { char:'boza_pod', grp, kind:'pod', x:s.x+dx, z:z+dz,
+        const pod = { char:'boza_pod', grp, kind:'pod', x:x+dx, z:z+dz,
                       mesh:MODEL.boza_pod, y:0, hidden:false, revealed:true,
                       alive:true, pts:300, spin:0, glint:0, scale:1 };
         grp.pods.push(pod); ground.push(pod);
       }
-      const core = { char:'boza_core', grp, kind:'core', x:s.x, z:z,
+      const core = { char:'boza_core', grp, kind:'core', x:x, z:z,
                      mesh:MODEL.boza_core, y:0, hidden:false, revealed:true,
                      alive:true, pts:2000, spin:0, glint:0, scale:1 };
       grp.core = core; ground.push(core);
       continue;
     }
     ground.push({
-      char:s.char, x:s.x, z:z, mesh:MODEL[s.char], y:0,
+      char:s.char, x:x, z:z, mesh:MODEL[s.char], y:0,
       hidden:false, revealed:true, alive:true, pts:s.pts,
       spin:0, glint:0, scale:1
     });
@@ -1286,9 +1315,9 @@ function spawnWave(){
          player's own column free for toroid/jara */
       const side = (i & 1) ? 1 : -1;
       const off = 44 + ((i*53) % 120);
-      let x = clamp(S.px + side*off, X0+22, X0+202);
+      let x = clamp(S.px + side*off, PXMIN, PXMAX);
       if (kind==='toroid' || kind==='jara'){
-        if (Math.abs(x - S.px) < 40) x = clamp(S.px + side*56, X0+22, X0+202);
+        if (Math.abs(x - S.px) < 40) x = clamp(S.px + side*56, PXMIN, PXMAX);
       }
       spawnAir(kind, x, baseZ + (i>>1)*30, 1, AIR_PTS[kind]||10,
                S.wave*7 + i, {variant:variant});
@@ -1354,6 +1383,7 @@ function boom(x,y,z,big,cols){
 
 function damage(){
   if (S.mode==='title') return;              /* the attract demo is a recording */
+  if (S.invincible) return;                  /* debug: 無敵 */
   if (S.inv>0) return;
   S.lives--; S.inv=150;
   S.diff = clamp(S.diff-16, 0, 127);        // arcade NORMAL: -16
@@ -1422,11 +1452,8 @@ function update(){
     if (S.mode === 'play') banner('AREA 1');
   }
   if (S.area > 0 && S.camZ > stageStartZ(STAGE + 1) - 60){
-    const prevX0 = X0;
     setStage(STAGE + 1);
     S.area = AREA_N;
-    S.px = clamp(S.px + (X0 - prevX0), PXMIN, PXMAX);
-    S.camX = BANDC + (S.px - BANDC)*0.55;
     S.wave = 0; S.waveT = 30;
     air = air.filter(e => e.kind !== 'andor');
     buildGround();
@@ -2000,9 +2027,21 @@ function drawTerrain(){
       let ty=(S.camZ+z)|0;
       /* rows 0..AREA1_ROW-1 are the approach forest; after that the area strip
          repeats every AREA_LEN rows (areas 2, 3, 4 ... share the same rows) */
+      let ty2 = ty, offA = 0, offB = 0, mix = 0;
       if (ty >= AREA1_ROW){
-        ty = AREA1_ROW + ((ty - AREA1_ROW) % AREA_LEN);
-      } else if (ty < 0) ty = 0;
+        const k = ty - AREA1_ROW;
+        ty2 = AREA1_ROW + (k % AREA_LEN);
+        const bnd = Math.round(k / AREA_LEN);        /* nearest area boundary */
+        const dist = k - bnd * AREA_LEN;             /* signed rows from it */
+        if (bnd > 0 && Math.abs(dist) < AREA_BLEND){
+          /* cross-fade the two columns around the seam */
+          offA = areaOff(bnd - 1); offB = areaOff(bnd);
+          mix = 0.5 + dist / (2*AREA_BLEND);         /* 0..1 across the seam */
+        } else {
+          offA = areaOff(dist < 0 ? bnd - 1 : bnd);
+        }
+      } else if (ty < 0) ty2 = 0;
+      ty = ty2;
       const shade=clamp(1.28-z/1500,0.40,1.0);
       const si=(shade*256)|0;
       const fog=clamp((z-1500)/1100,0,1);
@@ -2011,8 +2050,14 @@ function drawTerrain(){
       let wx=S.camX-(W/2)*step;
       if (fog<0.004){
         for (let x=0;x<W;x++){
-          const tx=(wx|0)&(MAPW-1);
-          const col=terr32[rowBase+tx];
+          let col=terr32[rowBase+(((wx+offA)|0)&(MAPW-1))];
+          if (mix>0){
+            const c2=terr32[rowBase+(((wx+offB)|0)&(MAPW-1))];
+            const r=(col&255)+( ((c2&255)-(col&255))*mix );
+            const g=((col>>8)&255)+( (((c2>>8)&255)-((col>>8)&255))*mix );
+            const b=((col>>16)&255)+( (((c2>>16)&255)-((col>>16)&255))*mix );
+            col=(b<<16)|(g<<8)|r;
+          }
           buf32[base+x]=(255<<24)|((((col>>16)&255)*si>>8)<<16)|
                                    ((((col>>8)&255)*si>>8)<<8)|(((col&255)*si)>>8);
           wx+=step;
@@ -2020,8 +2065,14 @@ function drawTerrain(){
       } else {
         const ia=1-fog, fr=FOG_R*fog, fg=FOG_G*fog, fb=FOG_B*fog;
         for (let x=0;x<W;x++){
-          const tx=(wx|0)&(MAPW-1);
-          const col=terr32[rowBase+tx];
+          let col=terr32[rowBase+(((wx+offA)|0)&(MAPW-1))];
+          if (mix>0){
+            const c2=terr32[rowBase+(((wx+offB)|0)&(MAPW-1))];
+            const r=(col&255)+( ((c2&255)-(col&255))*mix );
+            const g=((col>>8)&255)+( (((c2>>8)&255)-((col>>8)&255))*mix );
+            const b=((col>>16)&255)+( (((c2>>16)&255)-((col>>16)&255))*mix );
+            col=(b<<16)|(g<<8)|r;
+          }
           const r=(((col&255)*si)>>8)*ia+fr;
           const g=((((col>>8)&255)*si)>>8)*ia+fg;
           const b=((((col>>16)&255)*si)>>8)*ia+fb;
@@ -2317,6 +2368,14 @@ function drawHud(){
   const lives = clamp(S.lives - 1, 0, 8);
   for (let i=0;i<lives;i++)
     romTiles([0x25], 12 + i*9*HUD_S, H - 8*HUD_S - 10, HUD_S, '#e0bc62', 'left', true);
+  if (S.invincible){
+    ctx.save();
+    ctx.textAlign='right';
+    ctx.font='bold 13px "Yu Gothic UI","Meiryo",sans-serif';
+    ctx.fillStyle='#7fffb0';
+    ctx.fillText('無敵（M）', W-12, H-22);
+    ctx.restore();
+  }
 }
 
 function hud(){
