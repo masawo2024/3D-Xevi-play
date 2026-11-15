@@ -40,7 +40,9 @@
   .acts .big small{display:block;font-size:10px;font-weight:400;opacity:.7;}
   .acts .small{height:38px;font-size:12px;color:#9fb2ca;}
   @media (pointer:coarse), (max-width:820px){
-    #pad{display:flex;gap:8px;}
+    #pad{display:flex;gap:8px;
+         /* keep the pad off the very bottom edge (browser bars / home indicator) */
+         margin-bottom:clamp(24px, 10vh, 90px);}
     #pad.show{display:flex;}
     #play{align-items:flex-start;}     /* playfield at the top ... */
     .dpad{grid-template-columns:repeat(3, clamp(48px, 15.5vw, 66px));
@@ -172,6 +174,15 @@ function audioInit(){
   for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
   AU.noise = buf;
   AU.next = AU.ctx.currentTime + 0.1;
+}
+/* Called from every input path *before* anything tries to make a sound: the
+   touch handlers run on the element (target phase) and only afterwards bubble
+   to the window listener that used to initialise the AudioContext, so a tap on
+   "START" used to reach startGame()/musicStart() with AU.ctx still null and
+   the fanfare/BGM were dropped. */
+function ensureAudio(){
+  audioInit();
+  if (AU.ctx && AU.ctx.state !== 'running' && AU.ctx.resume) AU.ctx.resume();
 }
 
 function env(node, t0, a, d, peak){
@@ -826,14 +837,15 @@ function togglePause(){
 /* every "fire" entrypoint funnels through here so the on-screen pad and the
    keyboard behave identically (and a tap starts the game from the title) */
 function tapZap(){
+  ensureAudio();
   if (S.mode === 'title' || S.mode === 'over'){ startGame(); return; }
   if (S.mode === 'play') fireZapper();
 }
-function tapBomb(){ if (S.mode === 'play') fireBlaster(); }
+function tapBomb(){ ensureAudio(); if (S.mode === 'play') fireBlaster(); }
 
-addEventListener('pointerdown', () => { audioInit(); if (AU.ctx && AU.ctx.state==='suspended') AU.ctx.resume(); });
+addEventListener('pointerdown', () => { ensureAudio(); });
 addEventListener('keydown', e => {
-  audioInit(); if (AU.ctx && AU.ctx.state==='suspended') AU.ctx.resume();
+  ensureAudio();
   const k = e.key;
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(k)) e.preventDefault();
   keys[k.toLowerCase()] = true;
@@ -962,6 +974,7 @@ function resetRun(mode){
 }
 
 function startGame(){
+  ensureAudio();               /* the tap that starts the game must unlock audio */
   resetRun('play');
   S.inv = 46; S.t = 0;
   banner('AREA 1');
@@ -1000,13 +1013,6 @@ function buildGround(){
       spin:0, glint:0, scale:1
     });
   }
-}
-
-function startGame(){
-  resetRun('play');
-  S.inv = 46; S.t = 0;
-  banner('AREA 1');
-  playStartFanfare();          /* MAIN_THEME_SND, then SOLVALOU_SND loops */
 }
 
 /* ================================================================ weapons */
